@@ -15,7 +15,6 @@ abstract class BaseSystemServiceInfo
             $startTime = preg_replace('/(\.\d{6})\d+/', '$1', $startTime);
         }
 
-
         $serviceStartTime = strtotime($startTime);
         $startTime        = Carbon::parse($serviceStartTime);
         $diff             = $startTime->diff($endTime);
@@ -38,13 +37,12 @@ abstract class BaseSystemServiceInfo
     protected function getServiceSystem(string $serviceName, array $serviceNameNotIn = []): array
     {
 
-        $output       = shell_exec("systemctl list-units --type=service --all | grep $serviceName");
-//        if ($serviceName == 'mysql'){
-//            dd($output);
-//        }
-        if ($output === null){
+        $output = shell_exec("systemctl list-units --type=service --all | grep $serviceName");
+
+        if ($output === null) {
             return [];
         }
+
         $listServices = explode(PHP_EOL, trim($output));
         $endTime      = Carbon::now();
         $serviceMesh  = [];
@@ -63,7 +61,7 @@ abstract class BaseSystemServiceInfo
                 continue;
             }
 
-            $log = shell_exec("journalctl -u $service_name --since '5 minutes ago'");
+            $log = shell_exec("journalctl -u $service_name 2>&1 --since '5 minutes ago'");
 
             switch ($service_status) {
                 case $service_status == 'active':
@@ -71,7 +69,7 @@ abstract class BaseSystemServiceInfo
                     $execMainStartTimestamp = shell_exec("systemctl show $service_name --property=ActiveEnterTimestamp --value");
                     $uptime                 = $this->convertTime($execMainStartTimestamp, $endTime);
 
-                    $checkReloaded = shell_exec("journalctl -u $service_name --since '5 minutes ago' | grep 'Reload'");
+                    $checkReloaded = shell_exec("journalctl -u $service_name --since '5 minutes ago' 2>&1  | grep 'Reload'");
                     $listReloaded  = $checkReloaded ? explode(PHP_EOL, trim($checkReloaded)) : [];
 
                     if (count($listReloaded) > 0) {
@@ -83,7 +81,7 @@ abstract class BaseSystemServiceInfo
 
                 case $service_status == 'inactive':
                 {
-                    $execMainExitTimestamp = shell_exec("systemctl show $service_name --property=InactiveEnterTimestamp --value");
+                    $execMainExitTimestamp = shell_exec("systemctl show $service_name 2>&1 --property=InactiveEnterTimestamp --value");
                     $downtime              = $this->convertTime($execMainExitTimestamp, $endTime);
                     $log_info              = $log;
                     break;
@@ -91,7 +89,7 @@ abstract class BaseSystemServiceInfo
 
                 case $service_status == 'failed':
                 {
-                    $execMainExitTimestamp = shell_exec("systemctl show $service_name --property=ExecMainExitTimestamp --value");
+                    $execMainExitTimestamp = shell_exec("systemctl show $service_name 2>&1 --property=ExecMainExitTimestamp --value");
                     $downtime              = $this->convertTime($execMainExitTimestamp, $endTime);
                     $log_info              = $log;
                     break;
@@ -99,7 +97,7 @@ abstract class BaseSystemServiceInfo
 
                 case $service_status == 'activating':
                 {
-                    $stateChangeTimestamp = shell_exec("systemctl show $service_name --property=StateChangeTimestamp --value");
+                    $stateChangeTimestamp = shell_exec("systemctl show $service_name 2>&1 --property=StateChangeTimestamp --value");
                     $uptime               = $this->convertTime($stateChangeTimestamp, $endTime);
                     $log_info             = $log;
                     break;
@@ -107,7 +105,7 @@ abstract class BaseSystemServiceInfo
 
                 case $service_status == 'deactivating':
                 {
-                    $stateChangeTimestamp = shell_exec("systemctl show $service_name --property=StateChangeTimestamp --value");
+                    $stateChangeTimestamp = shell_exec("systemctl show $service_name 2>&1 --property=StateChangeTimestamp --value");
                     $downtime             = $this->convertTime($stateChangeTimestamp, $endTime);
                     $log_info             = $log;
                     break;
@@ -116,12 +114,12 @@ abstract class BaseSystemServiceInfo
 
             $serviceMesh[] = [
                 'name'        => $service_name,
-                'status'      => "$service_status ($service_sub_status)",
+                'status'      => $service_status,
                 'sub_status'  => $service_sub_status,
                 'uptime'      => $uptime,
                 'downtime'    => $downtime,
                 'log_info'    => $log_info,
-                'type'        => 'system',
+                'type'        => 1, // System,
                 'is_reloaded' => $is_reloaded
             ];
         }
@@ -131,8 +129,8 @@ abstract class BaseSystemServiceInfo
 
     public function getServiceInDockerContainer(string $serviceName, array $serviceNameNotIn = []): array
     {
-        $container          = shell_exec("docker ps -a --filter 'name=$serviceName' 2>&1 --format '{{.ID}} {{.Image}} {{.Status}}'  | grep -v -E 'exporter'" );
-        if ($container === null){
+        $container = shell_exec("docker ps -a --filter 'name=$serviceName' 2>&1 --format '{{.ID}} {{.Image}} {{.Status}}'  | grep -v -E 'exporter'");
+        if ($container === null) {
             return [];
         }
         $listContainer      = explode(PHP_EOL, trim($container));
@@ -228,17 +226,17 @@ abstract class BaseSystemServiceInfo
 
                 $serviceInContainer[] = [
                     'name'        => $container_image_name,
-                    'status'      => $statusSystem . " ($subStatusSystem)",
+                    'status'      => $statusSystem,
                     'sub_status'  => $subStatusSystem,
                     'uptime'      => $uptime,
                     'downtime'    => $downtime,
                     'log_info'    => $log_info,
-                    'type'        => 'docker',
+                    'type'        => 2, // 'Docker'
                     'is_reloaded' => false
                 ];
             }
-
         }
+
         return $serviceInContainer;
     }
 }
